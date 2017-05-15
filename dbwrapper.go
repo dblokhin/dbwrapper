@@ -61,7 +61,7 @@ func (db DB) Result(sql string, args ...interface{}) (string, error) {
 	return "", nil
 }
 
-func (db DB) Exec(sql string, args ...interface{}) (interface{}, error) {
+func (db DB) Exec(sql string, args ...interface{}) (sql.Result, error) {
 	// Prefix
 	sql = prefixer.Replace(sql)
 
@@ -91,7 +91,7 @@ func sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 	}
 
 	if len(columns) == 0 {
-		return []map[string]string{}, errors.New("SQLFetch(): get columns error")
+		return []map[string]string{}, errors.New("sqlfetch: get columns error")
 	}
 
 	values := make([]sql.RawBytes, len(columns))
