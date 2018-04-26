@@ -127,6 +127,7 @@ type key int
 
 const keyDB key = iota
 
+// New creates dbwrapper
 func New(driver, source, prefix string) (db DB, err error) {
 
 	db.driver, err = sql.Open(driver, source)
@@ -143,6 +144,18 @@ func New(driver, source, prefix string) (db DB, err error) {
 	escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
 
 	return db, err
+}
+
+// NewFromDB returns dbwrapper from active *sql.DB
+func NewFromDB(drv *sql.DB, prefix string) DB {
+	db := DB {
+		driver: drv,
+	}
+
+	prefixer = strings.NewReplacer("#__", prefix)
+	escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
+
+	return db
 }
 
 // NewContext create new context with db instance
