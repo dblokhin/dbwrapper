@@ -11,8 +11,8 @@ import (
 	"context"
 )
 
-
-type DB struct {
+// Database db-instance
+type Database struct {
 	driver *sql.DB
 }
 
@@ -21,7 +21,7 @@ var (
 	escaper *strings.Replacer
 )
 
-func (db DB) Query(sql string, args ...interface{}) ([]map[string]string, error) {
+func (db Database) Query(sql string, args ...interface{}) ([]map[string]string, error) {
 	// Prefix
 	sql = prefixer.Replace(sql)
 
@@ -33,7 +33,7 @@ func (db DB) Query(sql string, args ...interface{}) ([]map[string]string, error)
 	}
 }
 
-func (db DB) Row(sql string, args ...interface{}) (map[string]string, error) {
+func (db Database) Row(sql string, args ...interface{}) (map[string]string, error) {
 	res, err := db.Query(sql, args...)
 	if err != nil {
 		return map[string]string{}, err
@@ -46,7 +46,7 @@ func (db DB) Row(sql string, args ...interface{}) (map[string]string, error) {
 	return map[string]string{}, nil
 }
 
-func (db DB) Result(sql string, args ...interface{}) (string, error) {
+func (db Database) Result(sql string, args ...interface{}) (string, error) {
 	res, err := db.Query(sql, args...)
 	if err != nil {
 		return "", err
@@ -61,14 +61,14 @@ func (db DB) Result(sql string, args ...interface{}) (string, error) {
 	return "", nil
 }
 
-func (db DB) Exec(sql string, args ...interface{}) (sql.Result, error) {
+func (db Database) Exec(sql string, args ...interface{}) (sql.Result, error) {
 	// Prefix
 	sql = prefixer.Replace(sql)
 
 	return db.driver.Exec(sql, args...)
 }
 
-func (db DB) ExecId(sql string, args ...interface{}) (int64, error) {
+func (db Database) ExecId(sql string, args ...interface{}) (int64, error) {
 	// Prefix
 	sql = prefixer.Replace(sql)
 
@@ -79,7 +79,7 @@ func (db DB) ExecId(sql string, args ...interface{}) (int64, error) {
 	}
 }
 
-func (db DB) EscapeString(s string) string {
+func (db Database) EscapeString(s string) string {
 	return escaper.Replace(s)
 }
 
@@ -128,7 +128,7 @@ type key int
 const keyDB key = iota
 
 // New creates dbwrapper
-func New(driver, source, prefix string) (db DB, err error) {
+func New(driver, source, prefix string) (db Database, err error) {
 
 	db.driver, err = sql.Open(driver, source)
 	if err != nil {
@@ -146,9 +146,9 @@ func New(driver, source, prefix string) (db DB, err error) {
 	return db, err
 }
 
-// NewFromDB returns dbwrapper from active *sql.DB
-func NewFromDB(drv *sql.DB, prefix string) DB {
-	db := DB {
+// NewFromDB returns dbwrapper from active *sql.Database
+func NewFromDB(drv *sql.DB, prefix string) Database {
+	db := Database{
 		driver: drv,
 	}
 
@@ -167,8 +167,8 @@ func NewContext(ctx context.Context, driver, source, prefix string) (context.Con
 	}
 }
 
-// FromContext return config from context
-func FromContext(ctx context.Context) (DB, bool) {
-	value, ok := ctx.Value(keyDB).(DB)
+// DB return instance from context
+func DB(ctx context.Context) (Database, bool) {
+	value, ok := ctx.Value(keyDB).(Database)
 	return value, ok
 }
