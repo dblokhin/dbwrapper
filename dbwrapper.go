@@ -14,26 +14,38 @@ import (
 // Database db-instance
 type Database struct {
 	driver *sql.DB
+	prefixer *strings.Replacer
+	escaper *strings.Replacer
 }
 
 var (
-	prefixer *strings.Replacer
-	escaper *strings.Replacer
+	// errors
+	errNoDatabase = errors.New("no database instance")
+	errColumns = errors.New("sqlfetch: get columns error")
 )
 
+// Query executes sql query wih arguments
 func (db Database) Query(sql string, args ...interface{}) ([]map[string]string, error) {
-	// Prefix
-	sql = prefixer.Replace(sql)
-
-	if rows, err := db.driver.Query(sql, args...); err != nil {
-		return []map[string]string{}, err
-	} else {
-		defer rows.Close()
-		return sqlFetch(rows)
+	if db.prefixer != nil {
+		sql = db.prefixer.Replace(sql)
 	}
+
+	if db.driver == nil {
+		return []map[string]string{}, errNoDatabase
+	}
+
+	rows, err := db.driver.Query(sql, args...)
+	if err != nil {
+		return []map[string]string{}, err
+	}
+
+	defer rows.Close()
+	return db.sqlFetch(rows)
 }
 
+// Row executes sql query and returns a row
 func (db Database) Row(sql string, args ...interface{}) (map[string]string, error) {
+	// TODO: dont use db.Query
 	res, err := db.Query(sql, args...)
 	if err != nil {
 		return map[string]string{}, err
@@ -46,31 +58,34 @@ func (db Database) Row(sql string, args ...interface{}) (map[string]string, erro
 	return map[string]string{}, nil
 }
 
+// Result executes sql query and returns a field
 func (db Database) Result(sql string, args ...interface{}) (string, error) {
-	res, err := db.Query(sql, args...)
+	res, err := db.Row(sql, args...)
 	if err != nil {
 		return "", err
 	}
 
-	if len(res) > 0 {
-		for _, val := range res[0] {
-			return val, nil
-		}
+	for _, val := range res {
+		return val, nil
 	}
 
 	return "", nil
 }
 
+// Exec executes nodata sql query
 func (db Database) Exec(sql string, args ...interface{}) (sql.Result, error) {
-	// Prefix
-	sql = prefixer.Replace(sql)
+	if db.prefixer != nil {
+		sql = db.prefixer.Replace(sql)
+	}
 
 	return db.driver.Exec(sql, args...)
 }
 
+// ExecId executes nodata sql query and returns inserted id
 func (db Database) ExecId(sql string, args ...interface{}) (int64, error) {
-	// Prefix
-	sql = prefixer.Replace(sql)
+	if db.prefixer != nil {
+		sql = db.prefixer.Replace(sql)
+	}
 
 	if res, err := db.driver.Exec(sql, args...); err != nil {
 		return 0, err
@@ -79,11 +94,12 @@ func (db Database) ExecId(sql string, args ...interface{}) (int64, error) {
 	}
 }
 
+// EscapeString escapes string
 func (db Database) EscapeString(s string) string {
-	return escaper.Replace(s)
+	return db.escaper.Replace(s)
 }
 
-func sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
+func (db Database) sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 
 	columns, err := Rows.Columns()
 	if err != nil {
@@ -91,7 +107,7 @@ func sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 	}
 
 	if len(columns) == 0 {
-		return []map[string]string{}, errors.New("sqlfetch: get columns error")
+		return []map[string]string{}, errColumns
 	}
 
 	values := make([]sql.RawBytes, len(columns))
@@ -100,8 +116,7 @@ func sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 		scanArgs[i] = &values[i]
 	}
 
-	data := make([]map[string]string, 0)
-
+	resultQuery := make([]map[string]string, 0)
 	for Rows.Next() {
 		newRow := make(map[string]string)
 
@@ -117,45 +132,40 @@ func sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 			}
 			newRow[columns[i]] = value
 		}
-		data = append(data, newRow)
+		resultQuery = append(resultQuery, newRow)
 	}
 
-	return data, nil
+	return resultQuery, nil
 }
 
 type key int
 
 const keyDB key = iota
 
-// New creates dbwrapper
-func New(driver, source, prefix string) (db Database, err error) {
+// New creates db wrapper
+func New(driver, source, prefix string) (db *Database, err error) {
+	db = new(Database)
+	db.prefixer = strings.NewReplacer("#__", prefix)
+	db.escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
 
-	db.driver, err = sql.Open(driver, source)
-	if err != nil {
+	if db.driver, err = sql.Open(driver, source); err != nil {
 		return
 	}
 
-	err = db.driver.Ping()
-	if err != nil {
+	if err = db.driver.Ping(); err != nil {
 		return
 	}
 
-	prefixer = strings.NewReplacer("#__", prefix)
-	escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
-
-	return db, err
+	return
 }
 
 // NewFromDB returns dbwrapper from active *sql.Database
-func NewFromDB(drv *sql.DB, prefix string) Database {
-	db := Database{
+func NewFromDB(drv *sql.DB, prefix string) *Database {
+	return &Database{
 		driver: drv,
+		prefixer: strings.NewReplacer("#__", prefix),
+		escaper: strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`),
 	}
-
-	prefixer = strings.NewReplacer("#__", prefix)
-	escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
-
-	return db
 }
 
 // NewContext create new context with db instance
@@ -168,7 +178,7 @@ func NewContext(ctx context.Context, driver, source, prefix string) (context.Con
 }
 
 // DB return instance from context
-func DB(ctx context.Context) (Database, bool) {
-	value, ok := ctx.Value(keyDB).(Database)
+func DB(ctx context.Context) (*Database, bool) {
+	value, ok := ctx.Value(keyDB).(*Database)
 	return value, ok
 }
