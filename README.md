@@ -91,30 +91,8 @@ Error handler in caller (or may be caller of caller):
 		}
 	}()
     
-    // initiate the app
-    app := someInitial()
-```
-```go
-	// error handler
-	defer func() {
-		if ret := recover(); ret != nil {
-			cli.Status(http.StatusBadRequest)
-
-			switch err := ret.(type) {
-			case error:
-				json.NewEncoder(cli).Encode(jsonError{
-					Msg: err.Error(),
-				})
-			case string:
-				json.NewEncoder(cli).Encode(jsonError{
-					Msg: err,
-				})
-
-			default:
-				log.Println("unkown error panic")
-			}
-		}
-	}()
+	// initiate the app
+	app := someInitial()
 ```
 
 We can manipulate error values in `recover()`, we can place error handlers package.
