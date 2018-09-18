@@ -20,78 +20,90 @@ type Database struct {
 
 var (
 	// errors
-	errNoDatabase = errors.New("no database instance")
+	errNoDatabase = errors.New("dbwrapper: no database instance")
 	errColumns = errors.New("sqlfetch: get columns error")
 )
 
 // Query executes sql query wih arguments
-func (db Database) Query(sql string, args ...interface{}) ([]map[string]string, error) {
+func (db Database) Query(sql string, args ...interface{}) []map[string]string {
 	if db.prefixer != nil {
 		sql = db.prefixer.Replace(sql)
 	}
 
 	if db.driver == nil {
-		return []map[string]string{}, errNoDatabase
+		panic(errNoDatabase)
 	}
 
 	rows, err := db.driver.Query(sql, args...)
 	if err != nil {
-		return []map[string]string{}, err
+		panic(err)
 	}
 
 	defer rows.Close()
 	return db.sqlFetch(rows)
 }
 
-// Row executes sql query and returns a row
-func (db Database) Row(sql string, args ...interface{}) (map[string]string, error) {
+// Row executes SQL query and returns a row
+func (db Database) Row(sql string, args ...interface{}) map[string]string {
 	// TODO: dont use db.Query
-	res, err := db.Query(sql, args...)
-	if err != nil {
-		return map[string]string{}, err
-	}
-
+	res := db.Query(sql, args...)
 	if len(res) > 0 {
-		return res[0], nil
+		return res[0]
 	}
 
-	return map[string]string{}, nil
+	return map[string]string{}
 }
 
-// Result executes sql query and returns a field
-func (db Database) Result(sql string, args ...interface{}) (string, error) {
-	res, err := db.Row(sql, args...)
-	if err != nil {
-		return "", err
-	}
-
+// Result executes SQL query and returns a field
+func (db Database) Result(sql string, args ...interface{}) string {
+	res := db.Row(sql, args...)
 	for _, val := range res {
-		return val, nil
+		return val
 	}
 
-	return "", nil
+	return ""
 }
 
-// Exec executes nodata sql query
-func (db Database) Exec(sql string, args ...interface{}) (sql.Result, error) {
+// Exec executes no data SQL query
+func (db Database) Exec(sql string, args ...interface{}) sql.Result {
 	if db.prefixer != nil {
 		sql = db.prefixer.Replace(sql)
 	}
 
-	return db.driver.Exec(sql, args...)
+	if db.driver == nil {
+		panic(errNoDatabase)
+	}
+
+	res, err := db.driver.Exec(sql, args...)
+	if err != nil {
+		panic(err)
+	}
+
+	return res
 }
 
-// ExecId executes nodata sql query and returns inserted id
-func (db Database) ExecId(sql string, args ...interface{}) (int64, error) {
+// ExecId executes no data SQL query and returns inserted id
+func (db Database) ExecId(sql string, args ...interface{}) int64 {
 	if db.prefixer != nil {
 		sql = db.prefixer.Replace(sql)
 	}
 
-	if res, err := db.driver.Exec(sql, args...); err != nil {
-		return 0, err
-	} else {
-		return res.LastInsertId()
+	if db.driver == nil {
+		panic(errNoDatabase)
 	}
+
+	res, err := db.driver.Exec(sql, args...)
+
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		panic(err)
+	}
+
+	return id
 }
 
 // EscapeString escapes string
@@ -99,15 +111,15 @@ func (db Database) EscapeString(s string) string {
 	return db.escaper.Replace(s)
 }
 
-func (db Database) sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
+func (db Database) sqlFetch(Rows *sql.Rows) []map[string]string {
 
 	columns, err := Rows.Columns()
 	if err != nil {
-		return []map[string]string{}, err
+		panic(err)
 	}
 
 	if len(columns) == 0 {
-		return []map[string]string{}, errColumns
+		panic(err)
 	}
 
 	values := make([]sql.RawBytes, len(columns))
@@ -121,7 +133,7 @@ func (db Database) sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 		newRow := make(map[string]string)
 
 		if err := Rows.Scan(scanArgs...); err != nil {
-			return []map[string]string{}, err
+			panic(err)
 		}
 		var value string
 		for i, col := range values {
@@ -135,7 +147,7 @@ func (db Database) sqlFetch(Rows *sql.Rows) ([]map[string]string, error) {
 		resultQuery = append(resultQuery, newRow)
 	}
 
-	return resultQuery, nil
+	return resultQuery
 }
 
 type key int
@@ -143,20 +155,22 @@ type key int
 const keyDB key = iota
 
 // New creates db wrapper
-func New(driver, source, prefix string) (db *Database, err error) {
-	db = new(Database)
+func New(driver, source, prefix string) *Database {
+	var err error
+
+	db := new(Database)
 	db.prefixer = strings.NewReplacer("#__", prefix)
 	db.escaper = strings.NewReplacer(`'`, `\'`, `\`, `\\`, `"`, `\"`)
 
 	if db.driver, err = sql.Open(driver, source); err != nil {
-		return
+		panic(err)
 	}
 
 	if err = db.driver.Ping(); err != nil {
-		return
+		panic(err)
 	}
 
-	return
+	return db
 }
 
 // NewFromDB returns dbwrapper from active *sql.Database
@@ -169,16 +183,16 @@ func NewFromDB(drv *sql.DB, prefix string) *Database {
 }
 
 // NewContext create new context with db instance
-func NewContext(ctx context.Context, driver, source, prefix string) (context.Context, error) {
-	if db, err := New(driver, source, prefix); err != nil {
-		return ctx, err
-	} else {
-		return context.WithValue(ctx, keyDB, db), nil
-	}
+func NewContext(ctx context.Context, driver, source, prefix string) context.Context {
+	return context.WithValue(ctx, keyDB, New(driver, source, prefix))
 }
 
 // DB return instance from context
-func DB(ctx context.Context) (*Database, bool) {
+func DB(ctx context.Context) *Database {
 	value, ok := ctx.Value(keyDB).(*Database)
-	return value, ok
+	if !ok {
+		panic(errNoDatabase)
+	}
+
+	return value
 }
