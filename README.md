@@ -1,3 +1,5 @@
+[![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
+
 # Simple databases Go wrapper
 Simple databases Golang wrapper that all requests are returned as `[]map[string]string`. Very easy but isnt cool efficient. Easy to use with golang `"html/template"` package.
 
