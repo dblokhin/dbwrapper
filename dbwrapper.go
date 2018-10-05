@@ -24,6 +24,11 @@ var (
 	errColumns = errors.New("sqlfetch: get columns error")
 )
 
+// Driver returns underlying sql.DB instance
+func (db Database) Driver() *sql.DB {
+	return db.driver
+}
+
 // Query executes sql query wih arguments
 func (db Database) Query(sql string, args ...interface{}) []map[string]string {
 	if db.prefixer != nil {
