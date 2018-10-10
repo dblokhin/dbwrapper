@@ -32,7 +32,7 @@ func main()  {
 	param1 := "NOT safe sql string"
 	param1 := 15
 
-	result, err := db.Query("SELECT a FROM #__b WHERE c = ?, d = ?", param1, param2)
+	result := db.Query("SELECT a FROM #__b WHERE c = ?, d = ?", param1, param2)
 }
 ```
 
@@ -73,7 +73,7 @@ The some caller is:
 		os.Exit(someErrCode)
 	}
 ```
-In most cases `error` just means return function. And caller can checks the `err` again & return it too...
+In most cases `error` just means the return from function. And caller can checks the `err` again & return it too...
 #### After. New nice code:
 ```go
 	app := webapp.New()
@@ -87,7 +87,7 @@ Error handler in caller (or may be caller of caller):
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println(err)
-            os.Exit(someErrCode)
+            		os.Exit(someErrCode)
 		}
 	}()
     
